@@ -1,10 +1,11 @@
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = process.env.PORT || 3000;
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.2ic5wod.mongodb.net/?appName=Cluster0`;
+const stripe = require("stripe")(process.env.STRIP_KEY);
 
 // middleware
 app.use(cors());
@@ -28,12 +29,58 @@ async function run() {
     const parcelsColl = db.collection("parcels");
 
     // parcels related apis
-    app.get("/parcels", async (req, res) => {});
-
     app.post("/parcels", async (req, res) => {
       const parcelsDoc = req.body;
+      parcelsDoc.requestedAt = new Date();
       const result = await parcelsColl.insertOne(parcelsDoc);
       res.send(result);
+    });
+
+    app.get("/parcels", async (req, res) => {
+      const parcels = req.body;
+      const email = req.query.email;
+      const query = {};
+      if (email) {
+        query.senderEmail = email;
+      }
+      const options = { requestedAt: -1 };
+      const result = await parcelsColl.find(query).sort(options).toArray();
+      res.send(result);
+    });
+
+    app.get("/parcels/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await parcelsColl.findOne(query);
+      res.send(result);
+    });
+
+    app.delete("/parcels/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await parcelsColl.deleteOne(query);
+      res.send(result);
+    });
+
+    // payment apis
+    app.get("/create-checkout-session", async (req, res) => {
+      const paymentInfo = req.body;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            // Provide the exact Price ID (for example, price_1234) of the product you want to sell
+            price_data: {
+              currency: "USD",
+              unit_amount: "15000",
+              product_Data: paymentInfo.parcelName,
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        customerEmail: paymentInfo.senderEmail,
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/paymentSuccess`,
+      });
     });
 
     // Send a ping to confirm a successful connection
