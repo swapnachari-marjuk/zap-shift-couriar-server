@@ -71,7 +71,7 @@ async function run() {
           {
             // Provide the exact Price ID (for example, price_1234) of the product you want to sell
             price_data: {
-              currency: "BDT",
+              currency: "USD",
               unit_amount: amount,
               product_data: { name: paymentInfo.parcelName },
             },
@@ -83,7 +83,7 @@ async function run() {
         metadata: {
           parcelId: paymentInfo.parcelId,
         },
-        success_url: `${process.env.SITE_DOMAIN}/dashboard/paymentSuccess`,
+        success_url: `${process.env.SITE_DOMAIN}/dashboard/paymentSuccess?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/paymentCancel`,
       });
 
