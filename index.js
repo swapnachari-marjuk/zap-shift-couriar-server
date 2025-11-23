@@ -63,24 +63,31 @@ async function run() {
     });
 
     // payment apis
-    app.get("/create-checkout-session", async (req, res) => {
+    app.post("/create-checkout-session", async (req, res) => {
       const paymentInfo = req.body;
+      const amount = parseFloat(paymentInfo?.courierCost) * 100;
       const session = await stripe.checkout.sessions.create({
         line_items: [
           {
             // Provide the exact Price ID (for example, price_1234) of the product you want to sell
             price_data: {
-              currency: "USD",
-              unit_amount: "15000",
-              product_Data: paymentInfo.parcelName,
+              currency: "BDT",
+              unit_amount: amount,
+              product_data: { name: paymentInfo.parcelName },
             },
             quantity: 1,
           },
         ],
         mode: "payment",
-        customerEmail: paymentInfo.senderEmail,
+        customer_email: paymentInfo.senderEmail,
+        metadata: {
+          parcelId: paymentInfo.parcelId,
+        },
         success_url: `${process.env.SITE_DOMAIN}/dashboard/paymentSuccess`,
+        cancel_url: `${process.env.SITE_DOMAIN}/dashboard/paymentCancel`,
       });
+
+      res.send(session.url);
     });
 
     // Send a ping to confirm a successful connection
