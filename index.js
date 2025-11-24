@@ -6,6 +6,15 @@ const app = express();
 const port = process.env.PORT || 3000;
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.2ic5wod.mongodb.net/?appName=Cluster0`;
 const stripe = require("stripe")(process.env.STRIP_KEY);
+const crypto = require("crypto");
+
+function generateTrackingId() {
+  const prefix = "PRCL"; // your brand prefix
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
+  const random = crypto.randomBytes(3).toString("hex").toUpperCase(); // 6-char random hex
+
+  return `${prefix}-${date}-${random}`;
+}
 
 // middleware
 app.use(cors());
@@ -27,6 +36,7 @@ async function run() {
 
     const db = client.db("zap_shift_db");
     const parcelsColl = db.collection("parcels");
+    const paymentColl = db.collection("payment");
 
     // parcels related apis
     app.post("/parcels", async (req, res) => {
@@ -81,13 +91,55 @@ async function run() {
         mode: "payment",
         customer_email: paymentInfo.senderEmail,
         metadata: {
-          parcelId: paymentInfo.parcelId,
+          parcelId: paymentInfo.parcelID,
+          name: paymentInfo.parcelName,
         },
         success_url: `${process.env.SITE_DOMAIN}/dashboard/paymentSuccess?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${process.env.SITE_DOMAIN}/dashboard/paymentCancel`,
       });
 
       res.send(session.url);
+    });
+
+    app.patch("/payment-success", async (req, res) => {
+      const sessionID = req.query.session_id;
+      const sessionRetrieve = await stripe.checkout.sessions.retrieve(
+        sessionID
+      );
+
+      const trackingID = generateTrackingId();
+
+      if (sessionRetrieve.payment_status === "paid") {
+        const id = sessionRetrieve.metadata.parcelId;
+        const query = { _id: new ObjectId(id) };
+        const update = { $set: { paymentStatus: "paid", trackingID } };
+        const result = await parcelsColl.updateOne(query, update);
+
+        const paymentHistory = {
+          paymentAmount: sessionRetrieve.amount_total / 100,
+          customerEmail: sessionRetrieve.customer_email,
+          currency: sessionRetrieve.currency,
+          parcelID: sessionRetrieve.metadata.parcelId,
+          parcelName: sessionRetrieve.metadata.parcelName,
+          transactionID: sessionRetrieve.payment_intent,
+          paymentStatus: sessionRetrieve.payment_status,
+          paidAt: new Date(),
+          trackingID: trackingID,
+        };
+
+        const resultPayment = await paymentColl.insertOne(paymentHistory);
+
+        console.log("full operation is complete");
+        return res.send({
+          success: true,
+          trackingID,
+          transactionID: sessionRetrieve.payment_intent,
+          modifyParcel: result,
+          paymentInfo: resultPayment,
+        });
+      }
+
+      res.send({ success: false });
     });
 
     // Send a ping to confirm a successful connection
