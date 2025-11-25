@@ -108,6 +108,17 @@ async function run() {
       );
 
       const trackingID = generateTrackingId();
+      console.log(sessionRetrieve);
+      const query = { transactionID: sessionRetrieve.payment_intent };
+      const isExistingPayment = await paymentColl.findOne(query);
+      console.log(isExistingPayment);
+      if (isExistingPayment) {
+        return res.send({
+          message: "Already paid for it.",
+          trackingID,
+          transactionID: sessionRetrieve.payment_intent,
+        });
+      }
 
       if (sessionRetrieve.payment_status === "paid") {
         const id = sessionRetrieve.metadata.parcelId;
@@ -120,7 +131,7 @@ async function run() {
           customerEmail: sessionRetrieve.customer_email,
           currency: sessionRetrieve.currency,
           parcelID: sessionRetrieve.metadata.parcelId,
-          parcelName: sessionRetrieve.metadata.parcelName,
+          parcelName: sessionRetrieve.metadata.name,
           transactionID: sessionRetrieve.payment_intent,
           paymentStatus: sessionRetrieve.payment_status,
           paidAt: new Date(),
@@ -141,6 +152,11 @@ async function run() {
 
       res.send({ success: false });
     });
+
+    app.get('/payments', async(req,res)=>{
+      const result = await paymentColl.find().toArray()
+      res.send(result)
+    })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
